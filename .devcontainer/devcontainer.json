@@ -1,0 +1,25 @@
+{
+  "name": "gotlab",
+  "image": "mcr.microsoft.com/devcontainers/go:1.26-trixie",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "gitlab.gitlab-workflow"
+      ]
+    }
+  },
+  "postAttachCommand": ".devcontainer/post_attach.sh",
+  "mounts": [
+    {
+      "type": "bind",
+      "source": "${localEnv:HOME}/.config/gotlab.yml",
+      "target": "/home/vscode/.config/gotlab.yml"
+    },
+    {
+      "type": "bind,readonly",
+      "source": "${localEnv:HOME}/.ssh",
+      "target": "/home/vscode/.ssh"
+    }
+  ]
+}
