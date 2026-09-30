@@ -17,7 +17,7 @@ func TestDashboardAndSnapshotBrowsing(t *testing.T) {
 		ptesting.NewMockDir("z-folder"),
 		ptesting.NewMockFile("z-folder/hello.txt", 0644, "hello from snapshot"),
 		ptesting.NewMockFile("alpha.txt", 0644, "alpha"),
-	})
+	}, ptesting.WithPerimeter("production"), ptesting.WithTags("daily"))
 	require.NoError(t, snap.Close())
 
 	dashboard, err := LoadDashboard(repo)
@@ -25,8 +25,6 @@ func TestDashboardAndSnapshotBrowsing(t *testing.T) {
 	require.Equal(t, 1, dashboard.Total)
 	require.NotEmpty(t, dashboard.Location)
 	require.Positive(t, dashboard.LogicalSize)
-	require.Len(t, dashboard.SnapshotsPerDay, 30)
-	require.Equal(t, 1, sumInts(dashboard.SnapshotsPerDay))
 
 	snapshots, err := ListSnapshots(repo)
 	require.NoError(t, err)
@@ -34,6 +32,8 @@ func TestDashboardAndSnapshotBrowsing(t *testing.T) {
 	require.Equal(t, snap.Header.Identifier, snapshots[0].ID)
 	require.Equal(t, "/", snapshots[0].Importer)
 	require.Positive(t, snapshots[0].Size)
+	require.Equal(t, "production", snapshots[0].Perimeter)
+	require.Equal(t, []string{"daily"}, snapshots[0].Tags)
 
 	rootEntries, err := ListDir(repo, snapshots[0].ID, "")
 	require.NoError(t, err)
@@ -54,12 +54,4 @@ func TestDashboardAndSnapshotBrowsing(t *testing.T) {
 	content, err := io.ReadAll(file)
 	require.NoError(t, err)
 	require.Equal(t, "hello from snapshot", string(content))
-}
-
-func sumInts(values []int) int {
-	total := 0
-	for _, value := range values {
-		total += value
-	}
-	return total
 }

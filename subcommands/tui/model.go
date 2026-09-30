@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/PlakarKorp/kloset/objects"
@@ -31,6 +32,11 @@ type snapshotsMsg struct {
 	err   error
 }
 
+type snapshotFilter struct {
+	perimeter string
+	tag       string
+}
+
 type entriesMsg struct {
 	items []EntryInfo
 	err   error
@@ -44,25 +50,31 @@ type fileMsg struct {
 }
 
 type tuiModel struct {
-	repo        *repository.Repository
-	noHighlight bool
-	view        int
-	width       int
-	height      int
-	loading     bool
-	err         error
-	dashboard   *DashboardData
-	snapshots   []SnapshotInfo
-	page        int
-	cursor      int
-	snapshotID  objects.MAC
-	rootPath    string
-	dirPath     string
-	entries     []EntryInfo
-	fileInfo    *EntryInfo
-	fileContent string
-	fileWarning string
-	fileOffset  int
+	repo          *repository.Repository
+	noHighlight   bool
+	view          int
+	width         int
+	height        int
+	loading       bool
+	err           error
+	dashboard     *DashboardData
+	allSnapshots  []SnapshotInfo
+	snapshots     []SnapshotInfo
+	filter        snapshotFilter
+	filterOptions [2][]string
+	filterInputs  [2]int
+	filterField   int
+	editingFilter bool
+	page          int
+	cursor        int
+	snapshotID    objects.MAC
+	rootPath      string
+	dirPath       string
+	entries       []EntryInfo
+	fileInfo      *EntryInfo
+	fileContent   string
+	fileWarning   string
+	fileOffset    int
 }
 
 func newModel(repo *repository.Repository, noHighlight bool) *tuiModel {
@@ -85,8 +97,9 @@ func (m *tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.dashboard, m.err = msg.data, msg.err
 	case snapshotsMsg:
 		m.loading = false
-		m.snapshots, m.err = msg.items, msg.err
-		m.page, m.cursor = 0, 0
+		m.allSnapshots, m.err = msg.items, msg.err
+		m.filterOptions = snapshotFilterOptions(m.allSnapshots)
+		m.applySnapshotFilter()
 	case entriesMsg:
 		m.loading = false
 		m.entries, m.err = msg.items, msg.err
@@ -102,7 +115,13 @@ func (m *tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *tuiModel) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if key.String() == "ctrl+c" || key.String() == "q" {
+	if key.String() == "ctrl+c" {
+		return m, tea.Quit
+	}
+	if m.editingFilter {
+		return m.updateFilterKey(key)
+	}
+	if key.String() == "q" {
 		return m, tea.Quit
 	}
 	if m.loading {
@@ -124,6 +143,13 @@ func (m *tuiModel) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case viewSnapshots:
 		switch key.String() {
+		case "f":
+			for index, value := range []string{m.filter.perimeter, m.filter.tag} {
+				m.filterInputs[index] = slices.Index(m.filterChoices(index), value)
+			}
+			m.editingFilter = true
+			m.filterField = 0
+			return m, nil
 		case "esc", "backspace", "h":
 			m.view = viewDashboard
 			return m, nil
@@ -216,6 +242,27 @@ func (m *tuiModel) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *tuiModel) updateFilterKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc":
+		m.editingFilter = false
+	case "enter":
+		m.filter = snapshotFilter{
+			perimeter: m.filterChoices(0)[m.filterInputs[0]],
+			tag:       m.filterChoices(1)[m.filterInputs[1]],
+		}
+		m.editingFilter = false
+		m.applySnapshotFilter()
+	case "tab", "shift+tab":
+		m.filterField = 1 - m.filterField
+	case "up", "k":
+		m.filterInputs[m.filterField] = max(0, m.filterInputs[m.filterField]-1)
+	case "down", "j":
+		m.filterInputs[m.filterField] = min(len(m.filterChoices(m.filterField))-1, m.filterInputs[m.filterField]+1)
+	}
+	return m, nil
+}
+
 func (m *tuiModel) View() string {
 	return renderView(m)
 }
@@ -250,6 +297,62 @@ func (m *tuiModel) loadSnapshots() tea.Cmd {
 		items, err := ListSnapshots(m.repo)
 		return snapshotsMsg{items: items, err: err}
 	}
+}
+
+func (m *tuiModel) applySnapshotFilter() {
+	m.snapshots = nil
+	for _, item := range m.allSnapshots {
+		if m.filter.perimeter != "" && item.Perimeter != m.filter.perimeter {
+			continue
+		}
+		if m.filter.tag != "" && !slices.Contains(item.Tags, m.filter.tag) {
+			continue
+		}
+		m.snapshots = append(m.snapshots, item)
+	}
+	m.page, m.cursor = 0, 0
+}
+
+func snapshotFilterOptions(items []SnapshotInfo) [2][]string {
+	var options [2][]string
+	perimeters := make(map[string]struct{})
+	tags := make(map[string]struct{})
+	for _, item := range items {
+		if item.Perimeter != "" {
+			perimeters[item.Perimeter] = struct{}{}
+		}
+		for _, tag := range item.Tags {
+			if tag != "" {
+				tags[tag] = struct{}{}
+			}
+		}
+	}
+	for perimeter := range perimeters {
+		options[0] = append(options[0], perimeter)
+	}
+	for tag := range tags {
+		options[1] = append(options[1], tag)
+	}
+	for index := range options {
+		slices.Sort(options[index])
+		options[index] = append([]string{""}, options[index]...)
+	}
+	return options
+}
+
+func (m *tuiModel) filterChoices(index int) []string {
+	choices := m.filterOptions[index]
+	if len(choices) == 0 {
+		choices = []string{""}
+	}
+	value := m.filter.perimeter
+	if index == 1 {
+		value = m.filter.tag
+	}
+	if value != "" && !slices.Contains(choices, value) {
+		choices = append(slices.Clone(choices), value)
+	}
+	return choices
 }
 
 func (m *tuiModel) loadEntries() tea.Cmd {
