@@ -147,7 +147,20 @@ func renderSnapshots(m *tuiModel) string {
 	if m.editingFilter && m.height > 0 && m.height <= menuCount+8 {
 		return out.String()
 	}
-	out.WriteString(mutedStyle.Render(fmt.Sprintf("%-20s %-12s %9s %9s  %s", "CREATED", "ID", "SIZE", "DURATION", "SOURCE")) + "\n")
+	createdWidth, idWidth, sourceWidth, perimeterWidth, tagsWidth := 20, 12, 24, 16, 24
+	timestampFormat := "2006-01-02 15:04:05"
+	if m.width > 0 && m.width < 100 {
+		createdWidth, idWidth, sourceWidth, perimeterWidth, tagsWidth = 10, 8, 8, 11, 16
+		timestampFormat = "2006-01-02"
+	}
+	header := fmt.Sprintf("%-*s %-*s %9s %9s  %-*s %-*s %s",
+		createdWidth, "CREATED", idWidth, "ID", "SIZE", "DURATION",
+		sourceWidth, "SOURCE", perimeterWidth, "PERIMETER", "TAGS")
+	if m.width > 0 {
+		header = truncate(header, m.width)
+	}
+	out.WriteString(mutedStyle.Render(header))
+	out.WriteByte('\n')
 	pageStart := m.page * snapshotsPerPage
 	pageCount := min(snapshotsPerPage, len(m.snapshots)-pageStart)
 	visibleCount := min(pageCount, max(1, m.height-9))
@@ -165,12 +178,12 @@ func renderSnapshots(m *tuiModel) string {
 			marker = "> "
 			style = selectStyle
 		}
-		line := fmt.Sprintf("%-20s %-12s %9s %9s  %s",
-			item.Timestamp.Local().Format("2006-01-02 15:04:05"), item.ShortID,
-			humanize.IBytes(item.Size), item.Duration.Round(time.Second), item.Importer)
-		if len(item.Tags) > 0 {
-			line += "  " + strings.Join(item.Tags, ",")
-		}
+		line := fmt.Sprintf("%-*s %-*s %9s %9s  %-*s %-*s %s",
+			createdWidth, item.Timestamp.Local().Format(timestampFormat), idWidth, truncate(item.ShortID, idWidth),
+			humanize.IBytes(item.Size), item.Duration.Round(time.Second),
+			sourceWidth, truncate(item.Importer, sourceWidth),
+			perimeterWidth, truncate(item.Perimeter, perimeterWidth),
+			truncate(strings.Join(item.Tags, ","), tagsWidth))
 		out.WriteString(style.Render(marker+truncate(line, max(1, m.width-2))) + "\n")
 	}
 	out.WriteString(mutedStyle.Render(fmt.Sprintf("Page %d/%d | %d snapshots", m.page+1, (len(m.snapshots)+snapshotsPerPage-1)/snapshotsPerPage, len(m.snapshots))))
