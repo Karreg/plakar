@@ -17,12 +17,11 @@ import (
 )
 
 type DashboardData struct {
-	Location        string
-	Total           int
-	StorageSize     int64
-	LogicalSize     int64
-	Efficiency      float64
-	SnapshotsPerDay []int
+	Location    string
+	Total       int
+	StorageSize int64
+	LogicalSize int64
+	Efficiency  float64
 }
 
 type SnapshotInfo struct {
@@ -32,6 +31,7 @@ type SnapshotInfo struct {
 	Size      uint64
 	Duration  time.Duration
 	Importer  string
+	Perimeter string
 	Tags      []string
 }
 
@@ -55,27 +55,6 @@ func LoadDashboard(repo *repository.Repository) (*DashboardData, error) {
 	storageSize, err := repo.StorageSize()
 	if err != nil {
 		return nil, fmt.Errorf("calculate storage size: %w", err)
-	}
-
-	const days = 30
-	snapshotsPerDay := make([]int, days)
-	cutoff := repo.Configuration().Timestamp.AddDate(0, 0, -days)
-	for snapshotID, err := range repo.ListSnapshots() {
-		if err != nil {
-			continue
-		}
-		snap, err := snapshot.Load(repo, snapshotID)
-		if err != nil {
-			continue
-		}
-		timestamp := snap.Header.Timestamp
-		if !timestamp.Before(cutoff) {
-			dayIndex := time.Since(timestamp).Hours() / 24
-			if dayIndex >= 0 && dayIndex < days {
-				snapshotsPerDay[(days-1)-int(dayIndex)]++
-			}
-		}
-		_ = snap.Close()
 	}
 
 	efficiency := float64(0)
@@ -102,12 +81,11 @@ func LoadDashboard(repo *repository.Repository) (*DashboardData, error) {
 	}
 
 	return &DashboardData{
-		Location:        locationString,
-		Total:           total,
-		StorageSize:     storageSize,
-		LogicalSize:     logicalSize,
-		Efficiency:      efficiency,
-		SnapshotsPerDay: snapshotsPerDay,
+		Location:    locationString,
+		Total:       total,
+		StorageSize: storageSize,
+		LogicalSize: logicalSize,
+		Efficiency:  efficiency,
 	}, nil
 }
 
@@ -129,6 +107,7 @@ func ListSnapshots(repo *repository.Repository) ([]SnapshotInfo, error) {
 			Size:      source.Summary.Directory.Size + source.Summary.Below.Size,
 			Duration:  snap.Header.Duration,
 			Importer:  source.Importer.Directory,
+			Perimeter: snap.Header.Perimeter,
 			Tags:      append([]string(nil), snap.Header.Tags...),
 		})
 		if err := snap.Close(); err != nil {
