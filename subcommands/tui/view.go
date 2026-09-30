@@ -35,7 +35,11 @@ func renderView(m *tuiModel) string {
 	case viewDashboard:
 		status += " | s snapshots"
 	case viewSnapshots:
-		status += " | up/down select | left/right page | enter browse | esc dashboard"
+		if m.editingFilter {
+			status = "up/down choose | tab switch | enter apply | esc cancel | ctrl+c quit"
+		} else {
+			status += " | f filter | up/down select | left/right page | enter browse | esc dashboard"
+		}
 	case viewBrowser:
 		status += " | up/down select | enter open | backspace parent"
 	case viewFile:
@@ -74,68 +78,82 @@ func renderDashboard(m *tuiModel) string {
 	} else {
 		out.WriteString(mutedStyle.Render("Efficiency ") + valueStyle.Render(fmt.Sprintf("%.1f%%", data.Efficiency)) + "\n\n")
 	}
-	out.WriteString(mutedStyle.Render("Snapshots per day | last 30 days") + "\n")
-	out.WriteString(renderHistogram(data.SnapshotsPerDay))
-	return out.String()
-}
-
-func renderHistogram(values []int) string {
-	if len(values) == 0 {
-		return "No activity\n"
-	}
-	maximum := 0
-	for _, value := range values {
-		if value > maximum {
-			maximum = value
-		}
-	}
-	if maximum == 0 {
-		return mutedStyle.Render("No snapshots in this period") + "\n"
-	}
-	const levels = 5
-	var out strings.Builder
-	for row := levels; row > 0; row-- {
-		threshold := (maximum*row + levels - 1) / levels
-		for _, value := range values {
-			if value >= threshold {
-				out.WriteByte('#')
-			} else {
-				out.WriteByte(' ')
-			}
-		}
-		out.WriteByte('\n')
-	}
-	for index := range values {
-		switch index {
-		case 0:
-			out.WriteByte('1')
-		case 9:
-			out.WriteByte('1')
-		case 19:
-			out.WriteByte('2')
-		case 29:
-			out.WriteByte('3')
-		default:
-			out.WriteByte(' ')
-		}
-	}
-	out.WriteString("\n")
 	return out.String()
 }
 
 func renderSnapshots(m *tuiModel) string {
 	var out strings.Builder
 	out.WriteString(titleStyle.Render("Snapshots") + "\n")
+	menuCount := 0
+	if m.editingFilter {
+		for index, label := range []string{"Perimeter", "Tag"} {
+			marker := "  "
+			if index == m.filterField {
+				marker = "> "
+			}
+			value := m.filterChoices(index)[m.filterInputs[index]]
+			if value == "" {
+				value = "All"
+			}
+			line := fmt.Sprintf("%s%-10s %s", marker, label+":", value)
+			if m.width > 0 {
+				line = truncate(line, m.width)
+			}
+			out.WriteString(line)
+			out.WriteByte('\n')
+		}
+		choices := m.filterChoices(m.filterField)
+		menuCount = min(len(choices), max(1, min(6, m.height-9)))
+		start := max(0, min(m.filterInputs[m.filterField]-menuCount/2, len(choices)-menuCount))
+		for index := start; index < start+menuCount; index++ {
+			label := choices[index]
+			if label == "" {
+				label = "All"
+			} else if index >= len(m.filterOptions[m.filterField]) {
+				label += " (unavailable)"
+			}
+			marker := "    "
+			style := mutedStyle
+			if index == m.filterInputs[m.filterField] {
+				marker = "  > "
+				style = selectStyle
+			}
+			line := marker + label
+			if m.width > 0 {
+				line = truncate(line, m.width)
+			}
+			out.WriteString(style.Render(line))
+			out.WriteByte('\n')
+		}
+		out.WriteString(mutedStyle.Render(fmt.Sprintf("Choices %d-%d/%d", start+1, start+menuCount, len(choices))))
+		out.WriteByte('\n')
+	} else if m.filter.perimeter != "" || m.filter.tag != "" {
+		filters := fmt.Sprintf("Filters: perimeter=%q tag=%q", m.filter.perimeter, m.filter.tag)
+		if m.width > 0 {
+			filters = truncate(filters, m.width)
+		}
+		out.WriteString(mutedStyle.Render(filters))
+		out.WriteByte('\n')
+	}
 	if m.loading && len(m.snapshots) == 0 {
 		return out.String() + "Loading snapshots..."
 	}
 	if len(m.snapshots) == 0 {
+		if m.filter.perimeter != "" || m.filter.tag != "" {
+			return out.String() + mutedStyle.Render("No snapshots match filters")
+		}
 		return out.String() + mutedStyle.Render("No snapshots found")
+	}
+	if m.editingFilter && m.height > 0 && m.height <= menuCount+8 {
+		return out.String()
 	}
 	out.WriteString(mutedStyle.Render(fmt.Sprintf("%-20s %-12s %9s %9s  %s", "CREATED", "ID", "SIZE", "DURATION", "SOURCE")) + "\n")
 	pageStart := m.page * snapshotsPerPage
 	pageCount := min(snapshotsPerPage, len(m.snapshots)-pageStart)
-	visibleCount := min(pageCount, max(1, m.height-8))
+	visibleCount := min(pageCount, max(1, m.height-9))
+	if m.editingFilter {
+		visibleCount = min(visibleCount, max(1, m.height-8-menuCount))
+	}
 	visibleStart := max(0, min(m.cursor-visibleCount/2, pageCount-visibleCount))
 	start := pageStart + visibleStart
 	end := start + visibleCount
