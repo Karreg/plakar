@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,6 +39,63 @@ func TestSnapshotNavigationAndPaging(t *testing.T) {
 	require.Equal(t, viewBrowser, model.view)
 	require.Equal(t, model.snapshots[snapshotsPerPage].ID, model.snapshotID)
 	require.Equal(t, "/backup", model.rootPath)
+}
+
+func TestSnapshotColumns(t *testing.T) {
+	t.Parallel()
+
+	model := newModel(nil, true)
+	model.view = viewSnapshots
+	model.width, model.height = 140, 20
+	model.snapshots = []SnapshotInfo{
+		{ShortID: "first", Perimeter: "production", Tags: []string{"daily", "important"}, Importer: "/backup"},
+		{ShortID: "second", Importer: "/other"},
+	}
+	view := renderSnapshots(model)
+	require.Contains(t, view, "PERIMETER")
+	require.Contains(t, view, "TAGS")
+	require.Less(t, strings.Index(view, "SOURCE"), strings.Index(view, "PERIMETER"))
+	require.Less(t, strings.Index(view, "PERIMETER"), strings.Index(view, "TAGS"))
+	require.Contains(t, view, "production")
+	require.Contains(t, view, "daily,important")
+	require.Equal(t, 1, strings.Count(view, "daily,important"))
+	require.Less(t, strings.Index(view, "/backup"), strings.Index(view, "production"))
+	require.Less(t, strings.Index(view, "production"), strings.Index(view, "daily,important"))
+	require.Contains(t, view, "second")
+	require.Contains(t, view, "/other")
+	require.Contains(t, view, fmt.Sprintf("%-24s %-16s %s", "/other", "", ""))
+
+	model.width = 80
+	view = renderSnapshots(model)
+	require.Contains(t, view, "PERIMETER")
+	require.Contains(t, view, "TAGS")
+	require.Contains(t, view, "production")
+	require.Contains(t, view, "daily,important")
+	require.Less(t, strings.Index(view, "/backup"), strings.Index(view, "production"))
+	require.Contains(t, view, "> ")
+	model.snapshots[0].Importer = "/backups/department/production/long-source"
+	view = renderSnapshots(model)
+	require.Contains(t, view, truncate(model.snapshots[0].Importer, 8))
+	require.Contains(t, view, "production")
+	require.Contains(t, view, "daily,important")
+
+	model.width = 140
+	model.snapshots[0].Perimeter = "production-datacenter-east"
+	model.snapshots[0].Tags = []string{"daily", "important", "archive", "verified"}
+	view = renderSnapshots(model)
+	require.Contains(t, view, truncate(model.snapshots[0].Perimeter, 16))
+	require.Contains(t, view, truncate(strings.Join(model.snapshots[0].Tags, ","), 24))
+	require.Contains(t, view, "/backup")
+
+	model.filter = snapshotFilter{perimeter: "production"}
+	model = sendMsg(t, model, snapshotsMsg{items: []SnapshotInfo{
+		{Perimeter: "production", Tags: []string{"daily"}, Importer: "/backup"},
+		{Perimeter: "staging", Tags: []string{"weekly"}, Importer: "/other"},
+	}})
+	view = renderSnapshots(model)
+	require.Contains(t, view, "production")
+	require.Contains(t, view, "daily")
+	require.NotContains(t, view, "/other")
 }
 
 func TestSnapshotFilters(t *testing.T) {
