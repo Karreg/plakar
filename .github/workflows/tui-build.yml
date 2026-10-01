@@ -1,0 +1,117 @@
+name: tui-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Comma-separated GOOS_GOARCH targets (empty = DEFAULT_TARGETS)"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*-tui*"
+
+permissions:
+  contents: read
+
+env:
+  DEFAULT_TARGETS: "linux_amd64,darwin_arm64"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test -p 4 -timeout 2m ./...
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # Written outside the checkout: a dirty tree makes goreleaser refuse tag builds.
+      - name: Restrict build targets
+        env:
+          TARGETS: ${{ inputs.targets || env.DEFAULT_TARGETS }}
+        run: |
+          yq '.builds[0].targets = (strenv(TARGETS) | split(",") | map(trim) | map(select(. != "")))
+            | del(.builds[0].goos) | del(.builds[0].goarch)' .goreleaser.yml > "$RUNNER_TEMP/goreleaser.yml"
+          yq '.builds[0].targets' "$RUNNER_TEMP/goreleaser.yml"
+          # An empty list would make goreleaser fall back to its default targets.
+          [[ -n "$(yq '.builds[0].targets[]' "$RUNNER_TEMP/goreleaser.yml")" ]] || { echo "::error::no build targets"; exit 1; }
+
+      # Nothing is published: --snapshot or --skip=publish keeps everything in dist/.
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: >-
+            release --clean --config ${{ runner.temp }}/goreleaser.yml
+            ${{ startsWith(github.ref, 'refs/tags/') && '--skip=publish,docker,homebrew,sign' || '--snapshot --skip=docker,homebrew,sign' }}
+        env:
+          MAKE_LATEST_RELEASE: "false"
+
+      - name: List files
+        id: files
+        working-directory: dist
+        run: |
+          shopt -s nullglob
+          files=(*.tar.gz *.zip *.deb *.rpm *.apk *.pkg.tar.zst *checksums.txt)
+          echo "files=$(printf '%s\n' "${files[@]}" | jq -Rcs 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+
+      # Internal hand-off to the publish matrix; each file is re-uploaded unzipped there.
+      - name: Upload bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-bundle
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+            dist/*.pkg.tar.zst
+            dist/*checksums.txt
+    outputs:
+      files: ${{ steps.files.outputs.files }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        file: ${{ fromJSON(needs.build.outputs.files) }}
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist-bundle
+          path: dist
+
+      # archive: false uploads one file as-is; the artifact is named after it.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/${{ matrix.file }}
+          archive: false
+          retention-days: 30
+          if-no-files-found: error
