@@ -1,0 +1,73 @@
+.Dd May 5, 2026
+.Dt PLAKAR-TUI 1
+.Os
+.Sh NAME
+.Nm plakar-tui
+.Nd Browse a Plakar repository in a terminal user interface
+.Sh SYNOPSIS
+.Nm plakar tui
+.Op Fl no-highlight
+.Op Ar snapshot Ar path
+.Sh DESCRIPTION
+The
+.Nm plakar tui
+command opens an interactive terminal user interface to browse a Plakar
+repository.
+It provides a dashboard with repository statistics, a list of snapshots,
+and a file browser to navigate the contents of a snapshot.
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl no-highlight
+Disable syntax highlighting when displaying file contents.
+.El
+.Pp
+If
+.Ar snapshot
+is provided, the file browser opens directly on that snapshot.
+.Ar path
+may be a path relative to the snapshot root or an absolute path within it.
+.Pp
+Keys:
+.Bl -tag -width "pgup/pgdn"
+.It Li q
+Quit.
+.It Li s
+Open the snapshot list from the dashboard.
+.It Li enter
+Open the selected snapshot or file, or apply filters while editing them.
+.It Li up , down
+Move the snapshot selection, or the current filter choice while editing filters.
+.It Li left , right
+Change page in the snapshot list.
+.It Li f
+Choose a perimeter and tag from the values found in the snapshot list.
+The choices update when the snapshot list is refreshed.
+Select All to disable either filter.
+The values must match exactly, including case.
+If both are set, a snapshot must match both.
+.It Li tab
+Switch between perimeter and tag while editing filters.
+.It Li esc
+Cancel filter editing without applying changes.
+.It Li backspace
+Go to the parent directory or previous view.
+.It Li r
+Refresh the current view, keeping snapshot list filters active.
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Sh EXAMPLES
+Open the dashboard:
+.Bd -literal -offset indent
+$ plakar tui
+.Ed
+Open the file browser on a specific snapshot:
+.Bd -literal -offset indent
+$ plakar tui 1a2b3c4d
+.Ed
+.Sh SEE ALSO
+.Xr plakar 1 ,
+.Xr plakar-cat 1 ,
+.Xr plakar-ls 1 ,
+.Xr plakar-ui 1
