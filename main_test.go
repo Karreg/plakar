@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -209,11 +210,24 @@ func TestIsTerminal_DumbTermReturnsFalse(t *testing.T) {
 }
 
 func TestIsTerminal_NoTtyReturnsFalse(t *testing.T) {
-	// Under `go test` stdout is captured (not a tty), so even without
-	// TERM=dumb the term.IsTerminal(1) call returns false.
 	t.Setenv("TERM", "xterm")
+	const helperEnv = "PLAKAR_TEST_NO_TTY"
+	if os.Getenv(helperEnv) != "1" {
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatalf("locate test executable: %v", err)
+		}
+		cmd := exec.Command(executable, "-test.run=^TestIsTerminal_NoTtyReturnsFalse$")
+		cmd.Env = append(os.Environ(), helperEnv+"=1")
+		// CombinedOutput gives the child a pipe even when go test inherits a TTY.
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("run test with piped stdout: %v\n%s", err, output)
+		}
+		return
+	}
+
 	if isTerminal() {
-		t.Fatal("isTerminal() in `go test` (stdout is a pipe) should return false")
+		t.Fatal("isTerminal() with piped stdout should return false")
 	}
 }
 
