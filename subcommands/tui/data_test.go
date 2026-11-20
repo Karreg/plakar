@@ -17,7 +17,7 @@ func TestDashboardAndSnapshotBrowsing(t *testing.T) {
 		ptesting.NewMockDir("z-folder"),
 		ptesting.NewMockFile("z-folder/hello.txt", 0644, "hello from snapshot"),
 		ptesting.NewMockFile("alpha.txt", 0644, "alpha"),
-	}, ptesting.WithPerimeter("production"), ptesting.WithTags("daily"))
+	}, ptesting.WithPerimeter("production"), ptesting.WithTags([]string{"daily"}))
 	require.NoError(t, snap.Close())
 
 	dashboard, err := LoadDashboard(repo)

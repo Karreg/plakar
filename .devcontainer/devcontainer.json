@@ -1,6 +1,6 @@
 {
   "name": "gotlab",
-  "image": "mcr.microsoft.com/devcontainers/go:1.26-trixie",
+  "image": "mcr.microsoft.com/devcontainers/go:trixie",
   "customizations": {
     "vscode": {
       "extensions": [
