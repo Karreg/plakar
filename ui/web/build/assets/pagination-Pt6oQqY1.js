@@ -1,0 +1,1 @@
+import{Ni as e,Vi as t,qi as n}from"./enrich-DNMOw3Nb.js";function r(t){return n(e,t)}var i=100;function a(e=50){return t({page:r().nonnegative().catch(0).default(0),per_page:r().nonnegative().catch(e).default(e).transform(e=>Math.min(e,i))})}export{r as n,a as t};

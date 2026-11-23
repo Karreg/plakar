@@ -1,0 +1,1 @@
+import{Cn as e,Pn as t}from"./enrich-DNMOw3Nb.js";import{c as n}from"./index-DZNkVTLz.js";import{n as r}from"./use-api-B59wt2kc.js";var i=t();function a(){let{returnUrl:t}=n.useSearch();return r({status:`logged_in`,returnUrl:t}),(0,i.jsx)(e,{})}export{a as component};
